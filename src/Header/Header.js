@@ -54,6 +54,7 @@ const WeekViewHeader = ({
   rightToLeft,
 }) => {
   const columns = calculateDaysArray(initialDate, numberOfDays, rightToLeft);
+  // Date pink
   return (
     <View style={styles.container}>
       {columns && (

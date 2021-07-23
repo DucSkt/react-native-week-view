@@ -1,3 +1,5 @@
+
+
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import {
@@ -5,6 +7,7 @@ import {
   ScrollView,
   Animated,
   VirtualizedList,
+  FlatList,
   InteractionManager,
 } from 'react-native';
 import moment from 'moment';
@@ -25,6 +28,7 @@ import {
 } from '../utils';
 
 const MINUTES_IN_DAY = 60 * 24;
+export const HOURS_START = 480; // 8 AM
 
 export default class WeekView extends Component {
   constructor(props) {
@@ -36,12 +40,8 @@ export default class WeekView extends Component {
     this.currentPageIndex = this.pageOffset;
     this.eventsGridScrollX = new Animated.Value(0);
 
-    const initialDates = this.calculatePagesDates(
-      props.selectedDate,
-      props.numberOfDays,
-      props.prependMostRecent,
-      props.fixedHorizontally,
-    );
+    const initialDates = [moment(props.selectedDate).format(DATE_STR_FORMAT)];
+
     this.state = {
       // currentMoment should always be the first date of the current page
       currentMoment: moment(initialDates[this.currentPageIndex]).toDate(),
@@ -70,12 +70,19 @@ export default class WeekView extends Component {
     this.eventsGridScrollX.removeAllListeners();
   }
 
-  calculateTimes = memoizeOne((minutesStep, formatTimeLabel) => {
+  calculateTimes = memoizeOne((minutesStep) => {
     const times = [];
-    const startOfDay = moment().startOf('day');
-    for (let timer = 0; timer < MINUTES_IN_DAY; timer += minutesStep) {
-      const time = startOfDay.clone().minutes(timer);
-      times.push(time.format(formatTimeLabel));
+    let timeString = '';
+    for (let timer = HOURS_START; timer < MINUTES_IN_DAY; timer += minutesStep) {
+      let minutes = timer % 60;
+      if (minutes < 10) minutes = `0${minutes}`;
+      const hour = Math.floor(timer / 60);
+      timeString = `${hour}:${minutes}`;
+      if(hour < 10) {
+        timeString = `0${hour}:${minutes}`;
+      }
+
+      times.push(timeString);
     }
     return times;
   });
@@ -124,13 +131,11 @@ export default class WeekView extends Component {
     const { initialDates } = this.state;
     const { numberOfDays } = this.props;
 
-    const currentDate = moment(initialDates[this.currentPageIndex]).startOf(
-      'day',
-    );
+    const currentDate = moment(initialDates[this.currentPageIndex]).startOf('day');
     const deltaDay = moment(targetDate).startOf('day').diff(currentDate, 'day');
     const deltaIndex = Math.floor(deltaDay / numberOfDays);
     const signToTheFuture = this.getSignToTheFuture();
-    const targetIndex = this.currentPageIndex + deltaIndex * signToTheFuture;
+    let targetIndex = this.currentPageIndex + deltaIndex * signToTheFuture;
 
     this.goToPageIndex(targetIndex, animated);
   };
@@ -138,15 +143,15 @@ export default class WeekView extends Component {
   goToNextPage = (animated = true) => {
     const signToTheFuture = this.getSignToTheFuture();
     this.goToPageIndex(this.currentPageIndex + 1 * signToTheFuture, animated);
-  };
+  }
 
   goToPrevPage = (animated = true) => {
     const signToTheFuture = this.getSignToTheFuture();
     this.goToPageIndex(this.currentPageIndex - 1 * signToTheFuture, animated);
-  };
+  }
 
-  goToPageIndex = (target, animated = true) => {
-    if (target === this.currentPageIndex) {
+  goToPageIndex = (targetIndex, animated = true) => {
+    if (targetIndex === this.currentPageIndex) {
       return;
     }
 
@@ -162,8 +167,6 @@ export default class WeekView extends Component {
 
     const newState = {};
     let newStateCallback = () => {};
-    // The final target may change, if pages are added
-    let targetIndex = target;
 
     const lastViewablePage = initialDates.length - this.pageOffset;
     if (targetIndex < this.pageOffset) {
@@ -220,14 +223,14 @@ export default class WeekView extends Component {
 
         newState.initialDates = [...initialDates];
         const scrollToCurrentIndex = () =>
-          this.eventsGrid.scrollToIndex({
-            index: this.currentPageIndex,
-            animated: false,
-          });
+            this.eventsGrid.scrollToIndex({
+              index: this.currentPageIndex,
+              animated: false,
+            });
         newStateCallback = () => setTimeout(scrollToCurrentIndex, 0);
       } else if (
-        movedPages > 0 &&
-        newPage >= this.state.initialDates.length - this.pageOffset
+          movedPages > 0 &&
+          newPage >= this.state.initialDates.length - this.pageOffset
       ) {
         this.appendPagesInPlace(initialDates, 1);
 
@@ -256,15 +259,10 @@ export default class WeekView extends Component {
     this.header = ref;
   };
 
-  calculatePagesDates = (
-    currentMoment,
-    numberOfDays,
-    prependMostRecent,
-    fixedHorizontally,
-  ) => {
+  calculatePagesDates = (currentMoment, numberOfDays, prependMostRecent) => {
     const initialDates = [];
     const centralDate = moment(currentMoment);
-    if (numberOfDays === 7 || fixedHorizontally) {
+    if (numberOfDays === 7) {
       // Start week on monday
       centralDate.startOf('isoWeek');
     }
@@ -285,9 +283,9 @@ export default class WeekView extends Component {
       const endDate = moment(event.endDate);
 
       for (
-        let date = moment(startDate);
-        date.isSameOrBefore(endDate, 'days');
-        date.add(1, 'days')
+          let date = moment(startDate);
+          date.isSameOrBefore(endDate, 'days');
+          date.add(1, 'days')
       ) {
         // Calculate actual start and end dates
         const startOfDay = moment(date).startOf('day');
@@ -334,119 +332,64 @@ export default class WeekView extends Component {
       onEventPress,
       events,
       hoursInDisplay,
+      techs,
       timeStep,
-      formatTimeLabel,
       onGridClick,
       EventComponent,
       prependMostRecent,
       rightToLeft,
-      fixedHorizontally,
       showNowLine,
       nowLineColor,
     } = this.props;
     const { currentMoment, initialDates } = this.state;
-    const times = this.calculateTimes(timeStep, formatTimeLabel);
+    const times = this.calculateTimes(timeStep);
     const eventsByDate = this.sortEventsByDate(events);
     const horizontalInverted =
-      (prependMostRecent && !rightToLeft) ||
-      (!prependMostRecent && rightToLeft);
+        (prependMostRecent && !rightToLeft) ||
+        (!prependMostRecent && rightToLeft);
 
     return (
-      <View style={styles.container}>
-        <View style={styles.headerContainer}>
-          <Title
-            showTitle={showTitle}
-            style={headerStyle}
-            textStyle={headerTextStyle}
-            numberOfDays={numberOfDays}
-            selectedDate={currentMoment}
-          />
-          <VirtualizedList
-            horizontal
-            pagingEnabled
-            inverted={horizontalInverted}
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={false}
-            ref={this.headerRef}
-            data={initialDates}
-            getItem={(data, index) => data[index]}
-            getItemCount={(data) => data.length}
-            getItemLayout={(_, index) => this.getListItemLayout(index)}
-            keyExtractor={(item) => item}
-            initialScrollIndex={this.pageOffset}
-            renderItem={({ item }) => {
-              return (
-                <View key={item} style={styles.header}>
-                  <Header
-                    style={headerStyle}
-                    textStyle={headerTextStyle}
-                    formatDate={formatDateHeader}
-                    initialDate={item}
-                    numberOfDays={numberOfDays}
-                    rightToLeft={rightToLeft}
-                  />
-                </View>
-              );
-            }}
-          />
-        </View>
-        <ScrollView ref={this.verticalAgendaRef}>
-          <View style={styles.scrollViewContent}>
-            <Times
-              times={times}
-              textStyle={hourTextStyle}
-              hoursInDisplay={hoursInDisplay}
-              timeStep={timeStep}
-            />
-            <VirtualizedList
-              data={initialDates}
-              getItem={(data, index) => data[index]}
-              getItemCount={(data) => data.length}
-              getItemLayout={(_, index) => this.getListItemLayout(index)}
-              keyExtractor={(item) => item}
-              initialScrollIndex={this.pageOffset}
-              scrollEnabled={!fixedHorizontally}
-              renderItem={({ item }) => {
-                return (
-                  <Events
-                    times={times}
-                    eventsByDate={eventsByDate}
-                    initialDate={item}
-                    numberOfDays={numberOfDays}
-                    onEventPress={onEventPress}
-                    onGridClick={onGridClick}
-                    hoursInDisplay={hoursInDisplay}
-                    timeStep={timeStep}
-                    EventComponent={EventComponent}
-                    eventContainerStyle={eventContainerStyle}
-                    rightToLeft={rightToLeft}
-                    showNowLine={showNowLine}
-                    nowLineColor={nowLineColor}
-                  />
-                );
-              }}
-              horizontal
-              pagingEnabled
-              inverted={horizontalInverted}
-              onMomentumScrollEnd={this.scrollEnded}
-              scrollEventThrottle={32}
-              onScroll={Animated.event(
-                [
-                  {
-                    nativeEvent: {
-                      contentOffset: {
-                        x: this.eventsGridScrollX,
-                      },
-                    },
-                  },
-                ],
-                { useNativeDriver: false },
-              )}
-              ref={this.eventsGridRef}
-            />
+        <View style={styles.container}>
+          <View style={styles.headerContainer}>
           </View>
-        </ScrollView>
-      </View>
+          <ScrollView ref={this.verticalAgendaRef} horizontal bounces={false} >
+            <View style={{paddingLeft: 50}} >
+              {/*  giờ  */}
+              <Times
+                  times={times}
+                  textStyle={hourTextStyle}
+                  hoursInDisplay={hoursInDisplay}
+                  timeStep={timeStep}
+              />
+              <FlatList
+                  data={initialDates}
+                  keyExtractor={(item) => item}
+                  renderItem={({ item }) => {
+                    return (
+                        <Events
+                            times={times}
+                            techs={techs}
+                            eventsByDate={eventsByDate}
+                            initialDate={item}
+                            numberOfDays={numberOfDays}
+                            onEventPress={onEventPress}
+                            onGridClick={onGridClick}
+                            hoursInDisplay={hoursInDisplay}
+                            timeStep={timeStep}
+                            EventComponent={EventComponent}
+                            eventContainerStyle={eventContainerStyle}
+                            rightToLeft={rightToLeft}
+                            showNowLine={showNowLine}
+                            nowLineColor={nowLineColor}
+                        />
+                    )
+                  }}
+
+              />
+
+            </View>
+          </ScrollView>
+        </View>
     );
   }
 }
@@ -466,13 +409,12 @@ WeekView.propTypes = {
   selectedDate: PropTypes.instanceOf(Date).isRequired,
   locale: PropTypes.string,
   hoursInDisplay: PropTypes.number,
+  techs: PropTypes.object,
   timeStep: PropTypes.number,
-  formatTimeLabel: PropTypes.string,
   startHour: PropTypes.number,
   EventComponent: PropTypes.elementType,
   showTitle: PropTypes.bool,
   rightToLeft: PropTypes.bool,
-  fixedHorizontally: PropTypes.bool,
   prependMostRecent: PropTypes.bool,
   showNowLine: PropTypes.bool,
   nowLineColor: PropTypes.string,
@@ -482,10 +424,11 @@ WeekView.defaultProps = {
   events: [],
   locale: 'en',
   hoursInDisplay: 6,
+  techs: [],
   timeStep: 60,
-  formatTimeLabel: 'H:mm',
   startHour: 0,
   showTitle: true,
   rightToLeft: false,
   prependMostRecent: false,
 };
+

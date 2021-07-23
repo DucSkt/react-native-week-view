@@ -2,16 +2,17 @@ import { StyleSheet } from 'react-native';
 
 const styles = StyleSheet.create({
   columnContainer: {
-    paddingTop: 10,
-    width: 60,
+    flexDirection: 'row',
+    zIndex: 999
   },
   label: {
-    flex: -1,
+    width: 70,
+    justifyContent: 'center',
   },
   text: {
-    fontSize: 12,
-    textAlign: 'center',
+    fontSize: 15,
   },
 });
 
 export default styles;
+

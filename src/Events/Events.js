@@ -1,6 +1,6 @@
 import React, { PureComponent } from 'react';
 import PropTypes from 'prop-types';
-import { View, TouchableWithoutFeedback } from 'react-native';
+import {View, TouchableWithoutFeedback, FlatList, Text, Image} from 'react-native';
 import moment from 'moment';
 import memoizeOne from 'memoize-one';
 
@@ -18,12 +18,15 @@ import {
 } from '../utils';
 
 import styles from './Events.styles';
+import {HOURS_START} from "../WeekView/WeekView";
+import Tech from "./Tech";
 
 const MINUTES_IN_HOUR = 60;
 const EVENT_HORIZONTAL_PADDING = 15;
 const EVENTS_CONTAINER_WIDTH = CONTAINER_WIDTH - EVENT_HORIZONTAL_PADDING;
 const MIN_ITEM_WIDTH = 4;
 const ALLOW_OVERLAP_SECONDS = 2;
+const WIDTH_CELL = 70;
 
 const areEventsOverlapped = (event1EndDate, event2StartDate) => {
   const endDate = moment(event1EndDate);
@@ -33,22 +36,23 @@ const areEventsOverlapped = (event1EndDate, event2StartDate) => {
 
 class Events extends PureComponent {
   getStyleForEvent = (item) => {
-    const { hoursInDisplay } = this.props;
+    const { hoursInDisplay, timeStep, techs } = this.props;
 
     const startDate = moment(item.startDate);
     const startHours = startDate.hours();
     const startMinutes = startDate.minutes();
     const totalStartMinutes = startHours * MINUTES_IN_HOUR + startMinutes;
-    const top = minutesToYDimension(hoursInDisplay, totalStartMinutes);
+    const top = minutesToYDimension(hoursInDisplay, totalStartMinutes - HOURS_START, timeStep, WIDTH_CELL);
     const deltaMinutes = moment(item.endDate).diff(item.startDate, 'minutes');
-    const height = minutesToYDimension(hoursInDisplay, deltaMinutes);
+    const height = minutesToYDimension(hoursInDisplay, deltaMinutes, timeStep, WIDTH_CELL);
     const width = this.getEventItemWidth();
 
+    const index = techs.findIndex(data => data.id ===  item.techId)
     return {
-      top: top + CONTENT_OFFSET,
-      left: 0,
-      height,
-      width,
+      top: index * getTimeLabelHeight(hoursInDisplay, timeStep),
+      left: top,
+      height: getTimeLabelHeight(hoursInDisplay, timeStep),
+      width: height,
     };
   };
 
@@ -173,12 +177,15 @@ class Events extends PureComponent {
       // totalEvents stores events in each day of numberOfDays
       // example: [[event1, event2], [event3, event4], [event5]], each child array
       // is events for specific day in range
+
       const dates = calculateDaysArray(initialDate, numberOfDays, rightToLeft);
+
       const totalEvents = dates.map((date) => {
         const dateStr = date.format(DATE_STR_FORMAT);
         return eventsByDate[dateStr] || [];
       });
       const totalEventsWithPosition = this.getEventsWithPosition(totalEvents);
+
       return totalEventsWithPosition;
     },
   );
@@ -200,7 +207,70 @@ class Events extends PureComponent {
     const { initialDate } = this.props;
     const today = moment();
     return moment(initialDate).add(dayIndex, 'days').isSame(today, 'day');
-  };
+  }
+
+  finalLine = () => {
+    const {hoursInDisplay, timeStep} = this.props
+    return (
+        <View
+            key={'time'}
+            style={[styles.timeRow, { height: getTimeLabelHeight(hoursInDisplay, timeStep)}]}
+        >
+          <View style={styles.timeLabelLine} />
+        </View>
+    )
+  }
+
+  lineHorizontal = () => {
+    const {techs, hoursInDisplay, timeStep} = this.props
+    return (
+        techs.map((time, index) => (
+            <View
+                key={time}
+                style={[styles.timeRow, { height: getTimeLabelHeight(hoursInDisplay, timeStep)}]}
+            >
+
+                <Text>{time.name}</Text>
+                <Image source={{uri: 'https://instasalon-test-static.s3.amazonaws.com/media/employees/gray-haired-man-portrait-people-portrait-business-human-person-man-face-grey-persona.jpg'}} style={{height: 50, width: 50}}  />
+
+
+              <View style={styles.timeLabelLine} />
+            </View>
+        ))
+    )
+  }
+
+  lineVertical = () => {
+    const { techs, times, hoursInDisplay, timeStep} = this.props
+    return (
+        times.map((time, index) => {
+          return (
+              <View
+                  key={time}
+                  style={[ styles.timeLabelLineColumn, { height:  getTimeLabelHeight(hoursInDisplay, timeStep) * techs.length, left: index * WIDTH_CELL}]}
+              >
+              </View>
+          )
+        })
+    )
+  }
+
+  renderItemTech = ({ item }) => {
+    return <Tech item={item} />
+  }
+
+  renderTech = () => {
+    const { techs } = this.props
+    return null
+    // return (
+    //     <FlatList
+    //         data={techs}
+    //         keyExtractor={(item) => item.id}
+    //         renderItem={this.renderTech}
+    //      />
+    // )
+  }
+
 
   render() {
     const {
@@ -216,6 +286,7 @@ class Events extends PureComponent {
       timeStep,
       showNowLine,
       nowLineColor,
+      techs,
     } = this.props;
     const totalEvents = this.processEvents(
       eventsByDate,
@@ -226,18 +297,14 @@ class Events extends PureComponent {
 
     return (
       <View style={styles.container}>
-        {times.map((time) => (
-          <View
-            key={time}
-            style={[
-              styles.timeRow,
-              { height: getTimeLabelHeight(hoursInDisplay, timeStep) },
-            ]}
-          >
-            <View style={styles.timeLabelLine} />
-          </View>
-        ))}
+        {/*  đường viền kẻ ô ngang, sẽ change thành tech  */}
+        {this.lineHorizontal()}
+        {this.finalLine()}
+        {/*  đường viền kẻ ô dọc, Time giờ phut giây  */}
+        {this.lineVertical()}
+
         <View style={styles.events}>
+          {/*  ô màu xanh, có Event  */}
           {totalEvents.map((eventsInSection, dayIndex) => (
             <TouchableWithoutFeedback
               onPress={(e) => this.onGridClick(e, dayIndex)}
